@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xác minh - Python Captcha</title>
+<style>
+  :root{
+    --bg:#0f1117;
+    --panel:#171a23;
+    --accent:#4f8cff;
+    --accent2:#22c55e;
+    --danger:#ef4444;
+    --text:#e5e7eb;
+    --muted:#9ca3af;
+    --code-bg:#0b0d12;
+    --border:#2a2f3a;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:32px;
+    max-width:480px;
+    width:100%;
+    box-shadow:0 20px 60px rgba(0,0,0,.4);
+  }
+  h1{
+    font-size:20px;
+    margin:0 0 6px;
+  }
+  p.sub{
+    color:var(--muted);
+    font-size:14px;
+    margin:0 0 20px;
+  }
+  #lockScreen button.open-btn{
+    width:100%;
+    padding:14px;
+    border:none;
+    border-radius:10px;
+    background:var(--accent);
+    color:#fff;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    transition:.15s;
+  }
+  #lockScreen button.open-btn:hover{ filter:brightness(1.1); }
+
+  .hidden{ display:none !important; }
+
+  pre.codebox{
+    background:var(--code-bg);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:16px;
+    font-family:'Consolas','Courier New',monospace;
+    font-size:14px;
+    line-height:1.6;
+    overflow-x:auto;
+    color:#d4d4d4;
+    margin:0 0 16px;
+  }
+  .kw{color:#c586c0;}
+  .fn{color:#dcdcaa;}
+  .num{color:#b5cea8;}
+  .str{color:#ce9178;}
+  .cm{color:#6a9955;}
+
+  .answer-row{
+    display:flex;
+    gap:8px;
+    margin-bottom:12px;
+  }
+  input#answerInput{
+    flex:1;
+    padding:12px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:#0d0f14;
+    color:var(--text);
+    font-size:15px;
+  }
+  input#answerInput:focus{ outline:2px solid var(--accent); }
+  button#submitBtn{
+    padding:12px 18px;
+    border:none;
+    border-radius:8px;
+    background:var(--accent);
+    color:#fff;
+    font-weight:600;
+    cursor:pointer;
+  }
+  button#submitBtn:hover{ filter:brightness(1.1); }
+
+  #msg{
+    font-size:13px;
+    min-height:18px;
+    margin-bottom:8px;
+  }
+  #msg.ok{ color:var(--accent2); }
+  #msg.err{ color:var(--danger); }
+
+  .link-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:4px;
+  }
+  .refresh-link{
+    background:none;
+    border:none;
+    color:var(--muted);
+    font-size:12px;
+    text-decoration:underline;
+    cursor:pointer;
+    padding:0;
+  }
+  #hintBox{
+    background:#151a2b;
+    border:1px solid var(--accent);
+    border-radius:8px;
+    padding:12px 14px;
+    font-size:13px;
+    color:var(--text);
+    line-height:1.6;
+    margin-bottom:10px;
+  }
+
+  #content{
+    text-align:center;
+  }
+  #content h2{ color:var(--accent2); margin-top:0; }
+</style>
+</head>
+<body>
+
+  <div class="card" id="lockScreen">
+    <h1>Xác minh bạn không phải bot</h1>
+    <p class="sub">Bấm nút bên dưới để mở một bài toán code Python nhỏ. Giải đúng để tiếp tục.</p>
+    <button class="open-btn" id="openBtn" type="button">Mở Captcha</button>
+  </div>
+
+  <div class="card hidden" id="puzzleScreen">
+    <h1>Đoạn code sau sẽ in ra gì?</h1>
+    <p class="sub" id="question">Câu hỏi</p>
+    <pre class="codebox" id="codeBox"></pre>
+    <div class="answer-row">
+      <input type="text" id="answerInput" placeholder="Nhập câu trả lời..." autocomplete="off" inputmode="numeric">
+      <button id="submitBtn" type="button">Kiểm tra</button>
+    </div>
+    <div id="msg"></div>
+    <div id="hintBox" class="hidden"></div>
+    <div class="link-row">
+      <button class="refresh-link" id="hintBtn" type="button">💡 Gợi ý</button>
+      <button class="refresh-link" id="newPuzzleBtn" type="button">Đổi câu hỏi khác</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="content">
+    <h2>✅ Xác minh thành công</h2>
+    <p>Nhắn Zalo <strong>0389652010</strong> để nhận thưởng nhé!</p>
+    <p style="color:var(--muted);font-size:13px;">(Đây là nội dung thật sự nằm phía sau captcha. Bạn có thể thay phần này bằng nội dung/link của mình.)</p>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+
+  var currentAnswer = null;
+  var currentHint = "";
+
+  function rnd(min, max){
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  function esc(s){
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  // Mỗi generator trả về { question, html, answer }
+  var generators = [
+
+    // for i in range(a, b): print(i)  -> hỏi giá trị cuối cùng được in
+    function(){
+      var a = rnd(0, 4);
+      var b = a + rnd(3, 6);
+      var last = b - 1;
+      var html =
+        '<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(' +
+        a + ', ' + b + '):\n    <span class="fn">print</span>(i)';
+      return {
+        question: "Số cuối cùng được in ra là bao nhiêu?",
+        html: html,
+        answer: last,
+        hint: "range(" + a + ", " + b + ") sinh ra các số từ " + a + " đến " + (b-1) +
+              " (KHÔNG bao gồm " + b + "). Vòng lặp in từng số một, nên số in ra cuối cùng " +
+              "chính là số nhỏ hơn " + b + " ngay trước đó, tức là " + last + "."
+      };
+    },
+
+    // total = 0; for i in range(a,b): total += i; print(total)
+    function(){
+      var a = rnd(0, 3);
+      var b = a + rnd(3, 6);
+      var total = 0;
+      for (var i = a; i < b; i++){ total += i; }
+      var html =
+        'total = <span class="num">0</span>\n' +
+        '<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(' +
+        a + ', ' + b + '):\n    total += i\n' +
+        '<span class="fn">print</span>(total)';
+      return {
+        question: "print(total) sẽ in ra số gì?",
+        html: html,
+        answer: total,
+        hint: "total bắt đầu từ 0. Mỗi vòng lặp i chạy từ " + a + " đến " + (b-1) +
+              " (không tính " + b + "), và cứ mỗi lần total được cộng thêm i. " +
+              "Cộng dồn tất cả các số từ " + a + " đến " + (b-1) + " lại, ta được " + total + "."
+      };
+    },
+
+    // for i in range(n): print(i*k)  -> hỏi tổng tất cả các số đã in ra
+    function(){
+      var n = rnd(3, 6);
+      var k = rnd(2, 4);
+      var sum = 0;
+      for (var i = 0; i < n; i++){ sum += i * k; }
+      var html =
+        '<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(' + n + '):\n' +
+        '    <span class="fn">print</span>(i * ' + k + ')';
+      return {
+        question: "Tổng tất cả các số được in ra là bao nhiêu?",
+        html: html,
+        answer: sum,
+        hint: "range(" + n + ") sinh ra i từ 0 đến " + (n-1) + ". Mỗi vòng lặp in ra i * " + k +
+              ", tức là các số: " + (function(){
+                var arr=[]; for(var j=0;j<n;j++){arr.push(j*k);} return arr.join(", ");
+              })() + ". Cộng hết các số đó lại được " + sum + "."
+      };
+    },
+
+    // count = 0; for i in range(a,b): if i % k == 0: count += 1; print(count)
+    function(){
+      var a = rnd(1, 3);
+      var b = a + rnd(6, 10);
+      var k = rnd(2, 3);
+      var count = 0;
+      for (var i = a; i < b; i++){ if (i % k === 0) count++; }
+      var html =
+        'count = <span class="num">0</span>\n' +
+        '<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(' +
+        a + ', ' + b + '):\n' +
+        '    <span class="kw">if</span> i % ' + k + ' == <span class="num">0</span>:\n' +
+        '        count += 1\n' +
+        '<span class="fn">print</span>(count)';
+      return {
+        question: "print(count) sẽ in ra số gì? (số lần i chia hết cho " + k + ")",
+        html: html,
+        answer: count,
+        hint: "i chạy từ " + a + " đến " + (b-1) + ". Mỗi lần i chia hết cho " + k +
+              " (tức i % " + k + " == 0) thì count tăng thêm 1. Đếm xem trong khoảng đó có bao nhiêu " +
+              "số chia hết cho " + k + ", ta được count = " + count + "."
+      };
+    },
+
+    // input() theo kịch bản: giả sử người dùng nhập số n, tính n * n rồi in ra
+    function(){
+      var n = rnd(2, 12);
+      var result = n * n;
+      var html =
+        'n = <span class="fn">int</span>(<span class="fn">input</span>(<span class="str">"Nhap so: "</span>))\n' +
+        '<span class="cm"># giả sử người dùng nhập: ' + n + '</span>\n' +
+        '<span class="fn">print</span>(n * n)';
+      return {
+        question: "Nếu người dùng nhập " + n + ", chương trình in ra số gì?",
+        html: html,
+        answer: result,
+        hint: "input() lấy giá trị người dùng nhập (ở đây là " + n + "), int() chuyển thành số nguyên. " +
+              "Chương trình tính n * n = " + n + " * " + n + " = " + result + " rồi in ra."
+      };
+    },
+
+    // đếm số lần lặp: for i in range(a, b, step): print(i)  -> hỏi số lượng dòng được in
+    function(){
+      var a = rnd(0, 3);
+      var step = rnd(2, 3);
+      var count = rnd(3, 6);
+      var b = a + count * step;
+      var html =
+        '<span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(' +
+        a + ', ' + b + ', ' + step + '):\n    <span class="fn">print</span>(i)';
+      return {
+        question: "Có bao nhiêu dòng được in ra?",
+        html: html,
+        answer: count,
+        hint: "range(" + a + ", " + b + ", " + step + ") bắt đầu từ " + a + ", mỗi bước nhảy thêm " +
+              step + " đơn vị, và dừng lại trước khi chạm " + b + ". Đếm số lần nhảy ta được " + count + " dòng."
+      };
+    }
+  ];
+
+  function newPuzzle(){
+    var gen = generators[rnd(0, generators.length - 1)];
+    var p = gen();
+    currentAnswer = p.answer;
+    currentHint = p.hint || "";
+    document.getElementById("question").textContent = p.question;
+    document.getElementById("codeBox").innerHTML = p.html;
+    document.getElementById("answerInput").value = "";
+    document.getElementById("msg").textContent = "";
+    document.getElementById("msg").className = "";
+    var hintBox = document.getElementById("hintBox");
+    hintBox.textContent = "";
+    hintBox.classList.add("hidden");
+    document.getElementById("answerInput").focus();
+  }
+
+  function showHint(){
+    var hintBox = document.getElementById("hintBox");
+    hintBox.textContent = "💡 " + currentHint;
+    hintBox.classList.remove("hidden");
+  }
+
+  function checkAnswer(){
+    var val = document.getElementById("answerInput").value.trim();
+    var msg = document.getElementById("msg");
+    if (val === ""){
+      msg.textContent = "Vui lòng nhập câu trả lời.";
+      msg.className = "err";
+      return;
+    }
+    var num = Number(val);
+    if (!isNaN(num) && num === currentAnswer){
+      msg.textContent = "🎉 Chính xác! Ib Zalo 0389652010 để nhận thưởng nhé!";
+      msg.className = "ok";
+      setTimeout(function(){
+        document.getElementById("puzzleScreen").classList.add("hidden");
+        document.getElementById("content").classList.remove("hidden");
+      }, 800);
+    } else {
+      msg.textContent = "❌ Sai rồi, bé hư không chịu học bài nè!";
+      msg.className = "err";
+    }
+  }
+
+  document.getElementById("openBtn").addEventListener("click", function(){
+    document.getElementById("lockScreen").classList.add("hidden");
+    document.getElementById("puzzleScreen").classList.remove("hidden");
+    newPuzzle();
+  });
+
+  document.getElementById("submitBtn").addEventListener("click", checkAnswer);
+  document.getElementById("newPuzzleBtn").addEventListener("click", newPuzzle);
+  document.getElementById("hintBtn").addEventListener("click", showHint);
+  document.getElementById("answerInput").addEventListener("keydown", function(e){
+    if (e.key === "Enter") checkAnswer();
+  });
+
+})();
+</script>
+</body>
+</html>
